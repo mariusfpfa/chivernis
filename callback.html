@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authorization callback — Chivernis</title>
+<style>
+:root { --bg:#fbfbf9; --fg:#22201d; --muted:#6b6660; --rule:#e3e0da;
+        --accent:#2f5d50; --code:#f1efe9; --err:#a33b2a; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#17181a; --fg:#e6e4e0; --muted:#9a958e; --rule:#2e3033;
+          --accent:#7fb3a2; --code:#232528; --err:#e0806e; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font:16px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Inter,sans-serif; }
+main { max-width:40rem; margin:0 auto; padding:4rem 1.5rem; }
+h1 { font-size:1.5rem; letter-spacing:-.02em; margin:0 0 .5rem; }
+p { color:var(--muted); }
+code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+pre { background:var(--code); border:1px solid var(--rule); border-radius:8px;
+  padding:1rem; overflow-x:auto; font-size:.85rem; color:var(--fg);
+  user-select:all; word-break:break-all; white-space:pre-wrap; }
+button { font:inherit; font-size:.9rem; background:var(--accent); color:#fff;
+  border:0; border-radius:6px; padding:.55rem 1.1rem; cursor:pointer; }
+button:hover { opacity:.9; }
+.status { padding:.8rem 1rem; border-radius:8px; background:var(--code);
+  border:1px solid var(--rule); font-size:.92rem; margin:1.5rem 0; }
+.err { color:var(--err); }
+.hide { display:none; }
+footer { margin-top:3rem; padding-top:1rem; border-top:1px solid var(--rule);
+  color:var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Authorization callback</h1>
+  <p id="lede">Passing the authorization code back to the local script&hellip;</p>
+
+  <div class="status" id="status">Working&hellip;</div>
+
+  <div id="manual" class="hide">
+    <p>If the script didn't pick it up automatically, paste this whole URL into
+       its prompt:</p>
+    <pre id="url"></pre>
+    <button id="copy">Copy URL</button>
+  </div>
+
+  <footer>
+    <a href="./">Chivernis</a> &middot; this page only forwards an
+    authorization code to <code>localhost</code>. Nothing is stored or sent
+    anywhere else.
+  </footer>
+</main>
+
+<script>
+(function () {
+  var PORT = new URLSearchParams(location.search).get("port") || "8080";
+  var qs = location.search || "";
+  var statusEl = document.getElementById("status");
+  var manual = document.getElementById("manual");
+  var urlEl = document.getElementById("url");
+
+  urlEl.textContent = location.href;
+
+  document.getElementById("copy").addEventListener("click", function () {
+    navigator.clipboard.writeText(location.href).then(function () {
+      document.getElementById("copy").textContent = "Copied";
+    });
+  });
+
+  var code = new URLSearchParams(qs).get("code");
+  var err = new URLSearchParams(qs).get("error");
+
+  if (err) {
+    document.getElementById("lede").textContent = "Authorization failed.";
+    statusEl.innerHTML = '<span class="err">The bank returned: ' +
+      err.replace(/[<>&]/g, "") + "</span>";
+    manual.classList.remove("hide");
+    return;
+  }
+
+  if (!code) {
+    document.getElementById("lede").textContent = "Nothing to forward.";
+    statusEl.textContent = "No ?code= parameter in this URL.";
+    return;
+  }
+
+  // Hand the code to the local listener. Top-level navigation from https to
+  // http://localhost is permitted — mixed-content rules cover subresources,
+  // not navigation, and localhost is a trustworthy origin.
+  var target = "http://localhost:" + PORT + "/callback" + qs;
+
+  // Probe first with an image request so we can tell the user something useful
+  // when the script isn't running, instead of dumping them on a dead page.
+  var probe = new Image();
+  var settled = false;
+
+  function go() {
+    if (settled) return;
+    settled = true;
+    statusEl.textContent = "Forwarding to localhost:" + PORT + " …";
+    location.replace(target);
+  }
+
+  function fallback() {
+    if (settled) return;
+    settled = true;
+    document.getElementById("lede").textContent =
+      "Couldn't reach the local script.";
+    statusEl.innerHTML = "Nothing is listening on <code>localhost:" + PORT +
+      "</code>. Copy the URL below instead — the code is still valid.";
+    manual.classList.remove("hide");
+  }
+
+  probe.onload = probe.onerror = go;   // any response means something is there
+  probe.src = "http://localhost:" + PORT + "/ping?t=" + Date.now();
+  setTimeout(function () { settled ? null : fallback(); }, 2500);
+})();
+</script>
+</body>
+</html>
